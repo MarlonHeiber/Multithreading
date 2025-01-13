@@ -1,12 +1,14 @@
-As duas requisições serão feitas simultaneamente para as seguintes APIs:
+O que este programa faz:
 
-https://brasilapi.com.br/api/cep/v1/01153000 + cep
+Envia duas requisições simultaneamente para as seguintes APIs:
 
-http://viacep.com.br/ws/" + cep + "/json/
+https://brasilapi.com.br/api/cep/v1/01153000
 
-Os requisitos para este programa são:
+http://viacep.com.br/ws/01153000/json/
 
-- Acatar a API que entregar a resposta mais rápida e descartar a resposta mais lenta.
+Requisitos:
+
+- Acatar a API que entrega a resposta mais rápida e descartar a resposta mais lenta.
 
 - O resultado da request deverá ser exibido no command line com os dados do endereço, bem como qual API a enviou.
 
