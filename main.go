@@ -6,97 +6,196 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"time"
 )
 
 type ViaCEP struct {
-	Cep         string `json:"cep"`
-	Logradouro  string `json:"logradouro"`
-	Complemento string `json:"complemento"`
-	Unidade     string `json:"unidade"`
-	Bairro      string `json:"bairro"`
-	Localidade  string `json:"localidade"`
-	Uf          string `json:"uf"`
-	Estado      string `json:"estado"`
-	Regiao      string `json:"regiao"`
-	Ibge        string `json:"ibge"`
-	Gia         string `json:"gia"`
-	Ddd         string `json:"ddd"`
-	Siafi       string `json:"siafi"`
+	Cep         string          `json:"cep"`
+	Logradouro  string          `json:"logradouro"`
+	Complemento string          `json:"complemento"`
+	Unidade     string          `json:"unidade"`
+	Bairro      string          `json:"bairro"`
+	Localidade  string          `json:"localidade"`
+	Uf          string          `json:"uf"`
+	Estado      string          `json:"estado"`
+	Regiao      string          `json:"regiao"`
+	Ibge        string          `json:"ibge"`
+	Gia         string          `json:"gia"`
+	Ddd         string          `json:"ddd"`
+	Siafi       string          `json:"siafi"`
+	Erro        json.RawMessage `json:"erro"`
 }
 
-type BrasilApi struct {
-	Cep          string `json:"cep"`
-	State        string `json:"state"`
-	City         string `json:"city"`
-	Neighborhood string `json:"neighborhood"`
-	Street       string `json:"street"`
-	Service      string `json:"service"`
+type WeatherApi struct {
+	Location struct {
+		Name           string  `json:"name"`
+		Region         string  `json:"region"`
+		Country        string  `json:"country"`
+		Lat            float64 `json:"lat"`
+		Lon            float64 `json:"lon"`
+		TzID           string  `json:"tz_id"`
+		LocaltimeEpoch int     `json:"localtime_epoch"`
+		Localtime      string  `json:"localtime"`
+	} `json:"location"`
+	Current struct {
+		LastUpdatedEpoch int     `json:"last_updated_epoch"`
+		LastUpdated      string  `json:"last_updated"`
+		TempC            float64 `json:"temp_c"`
+		TempF            float64 `json:"temp_f"`
+		IsDay            int     `json:"is_day"`
+		Condition        struct {
+			Text string `json:"text"`
+			Icon string `json:"icon"`
+			Code int    `json:"code"`
+		} `json:"condition"`
+		WindMph    float64 `json:"wind_mph"`
+		WindKph    float64 `json:"wind_kph"`
+		WindDegree int     `json:"wind_degree"`
+		WindDir    string  `json:"wind_dir"`
+		PressureMb float64 `json:"pressure_mb"`
+		PressureIn float64 `json:"pressure_in"`
+		PrecipMm   float64 `json:"precip_mm"`
+		PrecipIn   float64 `json:"precip_in"`
+		Humidity   int     `json:"humidity"`
+		Cloud      int     `json:"cloud"`
+		FeelslikeC float64 `json:"feelslike_c"`
+		FeelslikeF float64 `json:"feelslike_f"`
+		WindchillC float64 `json:"windchill_c"`
+		WindchillF float64 `json:"windchill_f"`
+		HeatindexC float64 `json:"heatindex_c"`
+		HeatindexF float64 `json:"heatindex_f"`
+		DewpointC  float64 `json:"dewpoint_c"`
+		DewpointF  float64 `json:"dewpoint_f"`
+		VisKm      float64 `json:"vis_km"`
+		VisMiles   float64 `json:"vis_miles"`
+		Uv         float64 `json:"uv"`
+		GustMph    float64 `json:"gust_mph"`
+		GustKph    float64 `json:"gust_kph"`
+	} `json:"current"`
 }
 
-type ApiEndereco struct {
-	api      string
-	endereco string
+type WeatherResponse struct {
+	City  string  `json:"City"`
+	TempC float64 `json:"Temp_C"`
+	TempF float64 `json:"Temp_F"`
+	TempK float64 `json:"Temp_K"`
 }
 
 func main() {
-	channel := make(chan ApiEndereco)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", showTemperatureByCep)
+	http.ListenAndServe(":8080", mux)
 
-	go func() {
-		channel <- ApiEndereco{"viaCep", viaCep()}
-	}()
-
-	go func() {
-		channel <- ApiEndereco{"brasilApi", brasilApi()}
-	}()
-
-	select {
-	case msg := <-channel:
-		fmt.Printf("Recebido de %s o endereço:\n  %s\n", msg.api, msg.endereco)
-	case <-time.After(time.Second * 1):
-		panic("Timeout - Nenhuma API respondeu dentro de 1 segundo")
-	}
+	//TODO:
+	//realizado o deploy no Google Cloud Run.(free tier) e endereço ativo para ser acessado.
+	//Testes automatizados demonstrando o funcionamento.
+	//Utilize docker/docker-compose para que possamos realizar os testes de sua aplicação.
 
 }
+func showTemperatureByCep(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 
-func viaCep() string {
-	// time.Sleep(time.Second)
-	req, err := http.Get("http://viacep.com.br/ws/01153000/json/")
+	cepParam := r.URL.Query().Get("cep")
+	if cepParam == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Println("Bad Request")
+		return
+	}
+
+	viaCep, err := BuscaCEP(cepParam)
+	if err != nil {
+		switch err.Error() {
+		case "invalid zipcode":
+			w.WriteHeader(http.StatusUnprocessableEntity) // 422
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "invalid zipcode",
+			})
+		case "can not find zipcode":
+			w.WriteHeader(http.StatusNotFound) // 404
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "can not find zipcode",
+			})
+		default:
+			w.WriteHeader(http.StatusInternalServerError) // fallback
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "internal error",
+			})
+		}
+		return
+	}
+
+	temperare, err := getWeatherFromCityName(viaCep.Localidade)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Println("StatusInternalServerError")
+	}
+
+	response := WeatherResponse{
+		City:  temperare.Location.Name,
+		TempC: temperare.Current.TempC,
+		TempF: temperare.Current.TempF, //Não converti pois já existe na API
+		TempK: temperare.Current.TempC + 273,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+	// w.Write([]byte(fmt.Sprint(viaCep)))
+}
+
+func BuscaCEP(cep string) (ViaCEP, error) {
+	req, err := http.Get("http://viacep.com.br/ws/" + cep + "/json/")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao fazer requisição: %v \n", err)
+		return ViaCEP{}, err
 	}
 	defer req.Body.Close()
+
+	if req.StatusCode == http.StatusBadRequest {
+		return ViaCEP{}, fmt.Errorf("invalid zipcode")
+	}
 
 	response, err := io.ReadAll(req.Body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao ler resposta: %v \n", err)
+		return ViaCEP{}, err
 	}
 	var data ViaCEP
 	err = json.Unmarshal(response, &data)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao fazer parce da resposta: %v \n", err)
+		return ViaCEP{}, err
 	}
-	return fmt.Sprint(data)
+
+	if len(data.Erro) > 0 {
+		return ViaCEP{}, fmt.Errorf("can not find zipcode")
+	}
+	return data, nil
 
 }
 
-func brasilApi() string {
-	// time.Sleep(time.Second)
-	req, err := http.Get("https://brasilapi.com.br/api/cep/v1/01153000")
+func getWeatherFromCityName(cityName string) (WeatherApi, error) {
+	weatherUrl := fmt.Sprintf("https://api.weatherapi.com/v1/current.json?q=%s&key=12b01999d1844295996195139252304", cityName)
+	req, err := http.Get(weatherUrl)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao fazer requisição: %v \n", err)
+		return WeatherApi{}, err
 	}
 	defer req.Body.Close()
 
 	response, err := io.ReadAll(req.Body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao ler resposta: %v \n", err)
+		return WeatherApi{}, err
 	}
-	var data BrasilApi
+	var data WeatherApi
 	err = json.Unmarshal(response, &data)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Erro ao fazer parse da resposta: %v \n", err)
+		return WeatherApi{}, err
 	}
-	return fmt.Sprint(data)
+	return data, nil
 
 }
