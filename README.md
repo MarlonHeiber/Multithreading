@@ -1,15 +1,4 @@
 O que este programa faz:
 
-Envia duas requisições simultaneamente para as seguintes APIs:
+Roda um webserver que recebe um numero de CEP válido e retorna o nome da cidade do CEP com as temperaturas da previsão do tempo para o dia atual na cidade solicitada.
 
-https://brasilapi.com.br/api/cep/v1/01153000
-
-http://viacep.com.br/ws/01153000/json/
-
-Requisitos:
-
-- Acatar a API que entrega a resposta mais rápida e descartar a resposta mais lenta.
-
-- O resultado da request deverá ser exibido no command line com os dados do endereço, bem como qual API a enviou.
-
-- Limitar o tempo de resposta em 1 segundo. Caso contrário, o erro de timeout deve ser exibido.
